@@ -8,6 +8,10 @@
 (define-constant ERR_PATIENT_ALREADY_REGISTERED (err u106))
 (define-constant ERR_INVALID_PURPOSE (err u107))
 
+(define-constant ERR_EMERGENCY_CONTACT_NOT_FOUND (err u108))
+(define-constant ERR_EMERGENCY_CONTACT_ALREADY_EXISTS (err u109))
+(define-constant ERR_NOT_EMERGENCY_CONTACT (err u110))
+
 (define-map patients
   { patient-id: principal }
   {
@@ -301,6 +305,107 @@
         (ok true)
       )
       ERR_PATIENT_NOT_FOUND
+    )
+  )
+)
+
+
+
+(define-map emergency-contacts
+  { patient-id: principal, contact-id: principal }
+  {
+    contact-name: (string-ascii 100),
+    relationship: (string-ascii 50),
+    phone: (string-ascii 20),
+    email: (string-ascii 100),
+    priority: uint,
+    active: bool,
+    designated-at: uint
+  }
+)
+
+(define-map emergency-consents
+  { patient-id: principal, provider-id: principal, purpose: (string-ascii 50), contact-id: principal }
+  {
+    granted-at: uint,
+    expires-at: uint,
+    data-types: (list 10 (string-ascii 30)),
+    emergency-reason: (string-ascii 200),
+    active: bool
+  }
+)
+
+(define-read-only (get-emergency-contact (patient-id principal) (contact-id principal))
+  (map-get? emergency-contacts { patient-id: patient-id, contact-id: contact-id })
+)
+
+(define-read-only (is-emergency-contact (patient-id principal) (contact-id principal))
+  (match (get-emergency-contact patient-id contact-id)
+    contact-data (get active contact-data)
+    false
+  )
+)
+
+(define-public (designate-emergency-contact
+  (contact-id principal)
+  (contact-name (string-ascii 100))
+  (relationship (string-ascii 50))
+  (phone (string-ascii 20))
+  (email (string-ascii 100))
+  (priority uint)
+)
+  (let ((patient-id tx-sender))
+    (if (is-some (get-emergency-contact patient-id contact-id))
+      ERR_EMERGENCY_CONTACT_ALREADY_EXISTS
+      (begin
+        (map-set emergency-contacts
+          { patient-id: patient-id, contact-id: contact-id }
+          {
+            contact-name: contact-name,
+            relationship: relationship,
+            phone: phone,
+            email: email,
+            priority: priority,
+            active: true,
+            designated-at: stacks-block-height
+          }
+        )
+        (ok true)
+      )
+    )
+  )
+)
+
+(define-public (emergency-grant-consent
+  (patient-id principal)
+  (provider-id principal)
+  (purpose (string-ascii 50))
+  (expires-at uint)
+  (data-types (list 10 (string-ascii 30)))
+  (emergency-reason (string-ascii 200))
+)
+  (let ((contact-id tx-sender))
+    (if (not (is-emergency-contact patient-id contact-id))
+      ERR_NOT_EMERGENCY_CONTACT
+      (if (is-none (get-provider provider-id))
+        ERR_UNAUTHORIZED
+        (if (<= expires-at stacks-block-height)
+          ERR_INVALID_EXPIRY
+          (begin
+            (map-set emergency-consents
+              { patient-id: patient-id, provider-id: provider-id, purpose: purpose, contact-id: contact-id }
+              {
+                granted-at: stacks-block-height,
+                expires-at: expires-at,
+                data-types: data-types,
+                emergency-reason: emergency-reason,
+                active: true
+              }
+            )
+            (ok true)
+          )
+        )
+      )
     )
   )
 )
