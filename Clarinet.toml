@@ -19,6 +19,11 @@ epoch = 3.1
 path = 'contracts/Consent-Audit-Notifications.clar'
 clarity_version = 3
 epoch = 3.1
+
+[contracts.Consent-Delegation-Manager]
+path = 'contracts/Consent-Delegation-Manager.clar'
+clarity_version = 3
+epoch = 3.1
 [repl.analysis]
 passes = ['check_checker']
 
